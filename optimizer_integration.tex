@@ -50,13 +50,42 @@ D log_2(\frac{D^\frac{t_{DRAM}}{line_{DRAM}}}{L_2^{\frac{t_{DRAM}}{line_{DRAM}} 
 
 \section{Join}
 \subsection{Build Phase}
-Assume that the entire hash table can fit in some cache level $L_i$ (this might even be DRAM for that matter). We assume that the access to buckets is uniformly random, i.e., each access causes last level cache miss. 
+Assume that the entire hash table can fit in some cache level $L_i$ (this might even be DRAM for that matter). We assume that the access to buckets is uniformly random, i.e., each access causes last level cache miss. Also, for each bucket's chained list, we assume that the new entry is always inserted at the beginning of the chain itself instead of hopping all the way to the end which anyway doesn't make sense.
 
 The build phase involves jumping to the corresponding bucket to which the inner table tuple hashes - which will incur 1 cache line miss. This is common to both. 
 \subsubsection{Conventional HJ}
 For each of the $N_R$ tuples, apart from fetching \emph{1 line} for the right bucket, additional $\lceil \frac {size_{entry} + P}{size_{Li}} \rceil$ lines will be fetched for making an entry. This gives a total latency of 
 \begin{equation}
 t_{Li} \times N_R\times (\lceil \frac {size_{entry} + P}{size_{Li}} \rceil + 1)
+\end{equation}
+
+\subsubsection{Optimized HJ}
+As in the previous case, the calculation is similar except: \\
+a)there is no separate pointer to consider apart from the $size_{entry}$\\
+b) that there is an additional line miss for accessing the page bitmap since a page can be very large in size; which would lead to the entry and the bitmap being far apart. Thus the corresponding equation is : 
+\begin{equation}
+t_{Li} \times N_R\times (\lceil \frac {size_{entry}}{size_{Li}} \rceil + 1 + 1(Bitmap))
+\end{equation}
+
+
+
+\subsection{Probe Phase}
+
+\subsubsection{Conventional HJ}
+For search of each of $N_S$ tuples, we only jump once to the bucket. However, each entry in Conv. HJ begins on a separate line since the entries aren't contiguous. Thus the delay is 
+\begin{equation}
+t_{Li} \times N_S\times (1(bktJump) + (\frac{N_R}{B} \times \lceil \frac {size_{entry} + P}{size_{Li}} \rceil))
+\end{equation}
+The bucket jump term can be ignored giving us 
+\begin{equation}
+t_{Li} \times N_S\times \frac{N_R}{B} \times \lceil \frac {size_{entry} + P}{size_{Li}} \rceil
+\end{equation}
+\nonumber
+
+\subsubsection{Opimized HJ}
+Here, the main difference from previous is that all the tuples are contiguous, hence the ceiling function comes after multiplying $size_{entry}$ with $N_R/B$. We ignore the additional bitmap lookup term since it is very small.
+\begin{equation}
+t_{Li} \times N_S\times \lceil\frac{N_R}{B} \times  \frac {size_{entry}}{size_{Li}} \rceil
 \end{equation}
 
 \section{Challenges in Optimizer Integration}
