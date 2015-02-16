@@ -71,6 +71,11 @@ t_{Li} \times N_R\times (\lceil \frac {size_{entry}}{size_{Li}} \rceil + 1 + 1(B
 
 \subsection{Probe Phase}
 
+\vgcomment{
+a) Need to consider the fact that false positives occur due to small hash value. Where is this being handled?
+
+b) See if our opt for some of the algos always dominates the conventional in both metrics regardless of parameter values. Then there is no trade-off happening!}
+
 \subsubsection{Conventional HJ}
 For search of each of $N_S$ tuples, we only jump once to the bucket. However, each entry in Conv. HJ begins on a separate line since the entries aren't contiguous. Thus the delay is 
 \begin{equation}
@@ -101,7 +106,63 @@ b) Making this automated will be a huge overhead because:\\
 
 \item If we cannot use present estimates of cycles for each operator, but have to come up with a slightly more exact figure rather than order notation, it is a whole new work. Instead, just focus on adding additional cycles due to writes for each estimate? For this, an absolute value has to be put in place instead of order notation which needs to be looked at.
 
-\item How to give the Pareto set is another challenge for which EXPAND paper should act as a reference.
+\item How to give the Pareto set is another challenge for which EXPAND paper should act as a reference. Answer: We will use a $\lambda \%$ leeway in cycles and come up with the least writes plan in that window.
+
+
+\end{enumerate}
+
+\section{Understanding Optimizer Code}
+
+\begin{enumerate}
+\item add\_path simply adds another path to the reloptinfo of the concerned relation that it is dealing with (called parent-relation in code) in the series of its pathlist. Of-course there is also pruning right then and there to discard useless paths
+
+\item the tree is built bottom-up like DP. If it is a join node for instance, function add\_paths\_to\_joinrel will be called, which will enumerate all possible join methods and each of those methods will internally call add\_path for the \emph{same} reloptinfo node creating a list of possible paths.
+
+\item the create\_*\_path functions do the actual spade-work of making the path and costing it via cost\_*  functions. It is within these functions that the new path node is created and the previous left and right paths are made the children of this new node. Example create\_hashjoin\_path which internally calls cost\_hashjoin.
+
+\item my changes would feature in 3 places - add\_paths\_to\_joinrel and similar per operator functions to now feature in other types of joins, add\_path function itself to change pruning mechanism and also in the cost\_* functions. Also, a new metric needs to be added in the reloptinfo called "writes". It is to be decided whether we should do local pruning or an "at-once" final global pruning at the root node of the full plan tree 
+
+\item make\_agg function in createplan.c is responsible for inserting agg\_nodes. Its callee is a function called grouping\_planner. Check it out.
+
+\item match\_unsorted\_outer corresponds to both merge join and NL join.
+
+\item A useful excerpt from README for joins - what is meant by inner and outer relations :
+
+\begin{verbatim}
+Joins always occur using two RelOptInfos.  One is outer, the other inner.
+Outers drive lookups of values in the inner.  In a nested loop, lookups of
+values in the inner occur by scanning the inner path once per outer tuple
+to find each matching inner row.  In a mergejoin, inner and outer rows are
+ordered, and are accessed in order, so only one scan is required to perform
+the entire join: both inner and outer paths are scanned in-sync.  (There's
+not a lot of difference between inner and outer in a mergejoin...)  In a
+hashjoin, the inner is scanned first and all its rows are entered in a
+hashtable, then the outer is scanned and for each row we lookup the join
+key in the hashtable.
+\end{verbatim}
+\item NL join takes almost each of the available paths in the child nodes of the outer. 
+
+\begin{verbatim}
+/*
+			 * Always consider a nestloop join with this
+			 * (i.e each one in the outer list) outer and
+			 * cheapest-total-cost inner.  When appropriate, also consider
+			 * using the materialized form of the cheapest inner, the
+			 * cheapest-startup-cost inner path, and the cheapest innerjoin
+			 * indexpaths.
+			 */
+\end{verbatim}
+Hash Join has the following philosophy
+\begin{verbatim}
+/*
+		 * We consider both the cheapest-total-cost and cheapest-startup-cost
+		 * outer paths.  There's no need to consider any but the
+		 * cheapest-total-cost inner path, however.
+		 */
+\end{verbatim}
+
+
+
 
 
 \end{enumerate}
